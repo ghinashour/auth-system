@@ -2,11 +2,33 @@
 <?php require "config.php"; ?>
 
 <?php
+
+if (isset($_SESSION["username"])) {
+  header("index.php");
+}
+
+
 if (isset($_POST["submit"])) {
+
   if ($_POST["email"] == "" or $_POST["password"] == '' or $_POST['username'] == '') {
+
     echo 'some inputs are missing';
+
   } else {
 
+    //take the values of them and store them in variables
+    $email = $_POST['email'];
+    $password = $_POST['password'];
+    $username = $_POST['username'];
+
+    //insert them into the database
+    $insert = $conn->prepare('INSERT INTO users (email,username,mypassword) VALUES (:email, :username, :mypassword)');
+
+    $insert->execute([
+      ':email' => $email,
+      ':username' => $username,
+      ':mypassword' => password_hash($password, PASSWORD_DEFAULT),
+    ]);
   }
 }
 ?>

@@ -11,11 +11,10 @@ $user = "root";
 
 //password
 $pass = "";
-
-$conn = new PDO("mysql:$host;dbname=$dbname;", $user, $pass);
+$conn = new PDO("mysql:host=$host;dbname=$dbname", $user, $pass);
 
 if ($conn == true) {
-    echo "it's working fine";
+    return true;
 } else {
     echo "connection is wrong: err";
 }
