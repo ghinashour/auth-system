@@ -1,121 +1,88 @@
-<?php require "includes/header.php"; ?>
-<?php require "config.php"; ?>
 <?php
+require "includes/header.php";
+require "config.php";
+
+// Fetch post details
 if (isset($_GET["id"])) {
-    $id = $_GET["id"];
-    $onePost = $conn->query("SELECT * FROM posts WHERE id='$id'");
-    $onePost->execute();
-    $posts = $onePost->fetch(PDO::FETCH_OBJ);
+    $post_id = (int) $_GET["id"];
+
+    // Fetch the post
+    $stmt = $conn->prepare("SELECT * FROM posts WHERE id = :id");
+    $stmt->execute([':id' => $post_id]);
+    $post = $stmt->fetch(PDO::FETCH_OBJ);
+
+    // Fetch comments if post exists
+    if ($post) {
+        $stmt = $conn->prepare("SELECT * FROM comments WHERE post_id = :id ORDER BY id DESC");
+        $stmt->execute([':id' => $post_id]);
+        $comments = $stmt->fetchAll(PDO::FETCH_OBJ);
+    }
 }
-$comments = $conn->query("SELECT * FROM comments WHERE post_id='$id'");
-$comments->execute();
-$comment = $comments->fetchAll(PDO::FETCH_OBJ);
+
+// Fetch user rating if logged in
+$userRating = null;
+if (isset($_SESSION["user_id"]) && isset($post)) {
+    $stmt = $conn->prepare("SELECT * FROM ratings WHERE post_id = :id AND user_id = :uid");
+    $stmt->execute([':id' => $post_id, ':uid' => $_SESSION['user_id']]);
+    $userRating = $stmt->fetch(PDO::FETCH_OBJ);
+}
 ?>
-<div class="row">
+
+<div class="row mb-4">
     <div class="card">
         <div class="card-body">
-            <h5 class="card-title"><?php echo $posts->title; ?></h5>
-            <p class="card-text"><?php echo $posts->body; ?></p>
+            <?php if ($post): ?>
+                <h3 class="card-title"><?= htmlspecialchars($post->title) ?></h3>
+                <p class="card-text"><?= nl2br(htmlspecialchars($post->body)) ?></p>
+
+                <!-- Rating Form -->
+                <?php if (isset($_SESSION["user_id"])): ?>
+                    <form id="form-data" method="POST">
+                        <div id="rateYo" class="my-rating"></div>
+                        <input type="hidden" id="rating" name="rating" value="<?= $userRating->rating ?? 0 ?>">
+                        <input type="hidden" name="post_id" value="<?= $post->id ?>">
+                        <input type="hidden" name="user_id" value="<?= $_SESSION['user_id'] ?>">
+                    </form>
+                <?php endif; ?>
+            <?php else: ?>
+                <p class="text-danger">Post not found.</p>
+            <?php endif; ?>
         </div>
     </div>
 </div>
 
-<div class="row">
-    <form method="POST" id="comment_data">
-        <div class="form-floating">
-            <input name="username" type="hidden" class="form-control" id="username"
-                value="<?php echo $_SESSION['username']; ?>">
+<!-- Comments Section -->
+<?php if ($post): ?>
+    <div class="row">
+        <h4>Comments</h4>
+        <div id="comments-container">
+            <?php foreach ($comments ?? [] as $c): ?>
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h6 class="card-title"><?= htmlspecialchars($c->username) ?></h6>
+                        <p class="card-text"><?= nl2br(htmlspecialchars($c->comment)) ?></p>
+                        <?php if (isset($_SESSION['username']) && $_SESSION['username'] === $c->username): ?>
+                            <button class="btn btn-danger btn-sm delete-comment" data-id="<?= $c->id ?>">Delete</button>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
         </div>
-        <div class="form-floating">
-            <input name="post_id" type="hidden" value="<?php echo $posts->id; ?>" class="form-control" id="post_id">
-        </div>
 
-        <div class="form-floating">
-            <textarea rows="9" name="comment" placeholder="body" class="form-control" id="comment"></textarea>
-            <label for="floatingPassword">Comment</label>
-        </div>
-
-        <button name="submit" id="submit" class="w-100 btn btn-lg btn-primary mt-4" type="submit">Create
-            commment</button>
-        <div id="msg" class="nothing"></div>
-        <div id="delete-msg" class="nothing"></div>
-    </form>
-
-</div>
-
-<div class="row">
-    <?php foreach ($comment as $singleComment): ?>
-        <div class="card mt-5">
-            <div class="card-body">
-                <h5 class="card-title"><?php echo $singleComment->username; ?></h5>
-                <p class="card-text"><?php echo $singleComment->comment; ?></p>
-                <?php if (isset($_SESSION['username']) and $_SESSION['username'] == $singleComment->username): ?>
-                    <button id="delete-btn" value="<?php echo $singleComment->id; ?>" class=" btn btn-danger mt-3">Delete
-                    </button>
-                <?php endif; ?>
-            </div>
-        </div>
-    <?php endforeach; ?>
-</div>
-
-
+        <!-- Add Comment Form -->
+        <?php if (isset($_SESSION['username'])): ?>
+            <form id="comment_data">
+                <input type="hidden" name="username" value="<?= htmlspecialchars($_SESSION['username']) ?>">
+                <input type="hidden" name="post_id" value="<?= $post->id ?>">
+                <div class="form-floating mb-3">
+                    <textarea class="form-control" name="comment" placeholder="Write your comment..." required></textarea>
+                    <label>Comment</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Add Comment</button>
+            </form>
+            <div id="msg" class="mt-2"></div>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
 
 <?php require "includes/footer.php"; ?>
-
-<script>
-    $(document).ready(function () {
-
-        $(document).on('submit', function (e) {
-            //used to prevent refreshing of the page
-            e.preventDefault();
-            // alert('form submitted')
-            var formdata = $('#comment_data').serialize() + '&submit=submit';
-            $.ajax({
-                type: 'post',
-                url: "insert-comments.php",
-                data: formdata,
-                success: function () {
-                    //empty the comment box
-                    $('#comment').val(null);
-                    $('#username').val(null);
-                    $('#post_id').val(null);
-                    //once successfully the div of the above will change the class from nothing to  these
-                    $('#msg').html('Added successfully').toggleClass("alert alert-success bg-success text-white mt-3");
-                    //callling the function that repeat the refreshing automatically 
-                    fetch();
-                }
-            });
-        });
-
-
-        $("#delete-btn").on('click', function (e) {
-            //used to prevent refreshing of the page
-            e.preventDefault();
-            // alert('form submitted')
-            var id = $(this).val();
-            $.ajax({
-                type: 'post',
-                url: "delete-comment.php",
-                data: {
-                    delete: 'delete',
-                    id: id
-                },
-                success: function () {
-                    $('#delete-msg').html('Deleted successfully').toggleClass("alert alert-success bg-success text-white mt-3");
-                    //callling the function that repeat the refreshing automatically 
-                    fetch();
-
-                }
-            });
-        });
-
-
-
-        //refreshing automatically so that new comments appear directly
-        function fetch() {
-            setInterval(() => {
-                $('body').load("show.php?id=<?php echo $_GET["id"]; ?>")
-            }, 4000);
-        }
-    });
-</script>
